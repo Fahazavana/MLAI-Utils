@@ -51,18 +51,44 @@ class Encoder28(nn.Module):
     def __init__(self, c_in=1, c_hid=16, c_out=1, dim=16):
         super(Encoder28, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(c_in, c_hid, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(
+                in_channels=c_in, out_channels=c_hid, kernel_size=3, padding=1, stride=2
+            ),
             nn.GELU(),
-            nn.Conv2d(c_hid, 2 * c_hid, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(
+                in_channels=c_hid,
+                out_channels=2 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
             nn.GELU(),
-            nn.Conv2d(2 * c_hid, 4 * c_hid, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(
+                in_channels=2 * c_hid,
+                out_channels=4 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
             nn.GELU(),
-            nn.Conv2d(4 * c_hid, 8 * c_hid, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(
+                in_channels=4 * c_hid,
+                out_channels=8 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
             nn.GELU(),
-            nn.Conv2d(8 * c_hid, 16 * c_hid, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(
+                in_channels=8 * c_hid,
+                out_channels=16 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
             nn.GELU(),
             nn.Flatten(1, -1),
-            nn.Linear(16 * c_hid, c_out * dim * dim),
+            nn.Linear(in_features=16 * c_hid, out_features=c_out * dim * dim),
             nn.Unflatten(1, (c_out, dim, dim)),
         )
 
@@ -74,12 +100,12 @@ class Decoder28(nn.Module):
         super(Decoder28, self).__init__()
         self.decoder = nn.Sequential(
             nn.Flatten(1, -1),
-            nn.Linear(c_in * dim * dim, 16 * c_hid),
+            nn.Linear(in_features=c_in * dim * dim, out_features=16 * c_hid),
             nn.GELU(),
             nn.Unflatten(1, (16 * c_hid, 1, 1)),
             nn.ConvTranspose2d(
-                16 * c_hid,
-                8 * c_hid,
+                in_channels=16 * c_hid,
+                out_channels=8 * c_hid,
                 kernel_size=3,
                 stride=2,
                 padding=1,
@@ -87,8 +113,8 @@ class Decoder28(nn.Module):
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
-                8 * c_hid,
-                4 * c_hid,
+                in_channels=8 * c_hid,
+                out_channels=4 * c_hid,
                 kernel_size=3,
                 stride=2,
                 padding=1,
@@ -96,8 +122,8 @@ class Decoder28(nn.Module):
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
-                4 * c_hid,
-                2 * c_hid,
+                in_channels=4 * c_hid,
+                out_channels=2 * c_hid,
                 kernel_size=3,
                 stride=2,
                 padding=1,
@@ -105,11 +131,254 @@ class Decoder28(nn.Module):
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
-                2 * c_hid, c_hid, kernel_size=3, stride=2, padding=1, output_padding=1
+                in_channels=2 * c_hid,
+                out_channels=c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
-                c_hid, c_out, kernel_size=3, stride=2, padding=1, output_padding=1
+                in_channels=c_hid,
+                out_channels=c_out,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        return self.decoder(x)
+
+
+class Encoder32(nn.Module):
+    def __init__(self, c_in=1, c_hid=16, c_out=1, dim=16):
+        super(Encoder32, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(
+                in_channels=c_in, out_channels=c_hid, kernel_size=3, padding=1, stride=2
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=c_hid,
+                out_channels=2 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=2 * c_hid,
+                out_channels=4 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=4 * c_hid,
+                out_channels=8 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=8 * c_hid,
+                out_channels=16 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Flatten(1, -1),
+            nn.Linear(in_features=16 * c_hid, out_features=c_out * dim * dim),
+            nn.Unflatten(1, (c_out, dim, dim)),
+        )
+
+    def forward(self, x):
+        return self.encoder(x)
+
+
+class Decoder32(nn.Module):
+    def __init__(self, c_out=1, c_hid=16, c_in=1, dim=16):
+        super(Decoder32, self).__init__()
+        self.decoder = nn.Sequential(
+            nn.Flatten(1, -1),
+            nn.Linear(in_features=c_in * dim * dim, out_features=16 * c_hid),
+            nn.GELU(),
+            nn.Unflatten(1, (16 * c_hid, 1, 1)),
+            nn.ConvTranspose2d(
+                in_channels=16 * c_hid,
+                out_channels=8 * c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=8 * c_hid,
+                out_channels=4 * c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=4 * c_hid,
+                out_channels=2 * c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=2 * c_hid,
+                out_channels=c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=c_hid,
+                out_channels=c_out,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        return self.decoder(x)
+
+
+class Encoder64(nn.Module):
+    def __init__(self, c_in=1, c_hid=16, c_out=1, dim=16):
+        super(Encoder64, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(
+                in_channels=c_in, out_channels=c_hid, kernel_size=3, padding=1, stride=2
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=c_hid,
+                out_channels=2 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=2 * c_hid,
+                out_channels=4 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=4 * c_hid,
+                out_channels=8 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=8 * c_hid,
+                out_channels=16 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Conv2d(
+                in_channels=16 * c_hid,
+                out_channels=32 * c_hid,
+                kernel_size=3,
+                padding=1,
+                stride=2,
+            ),
+            nn.GELU(),
+            nn.Flatten(1, -1),
+            nn.Linear(in_features=32 * c_hid, out_features=c_out * dim * dim),
+            nn.Unflatten(1, (c_out, dim, dim)),
+        )
+
+    def forward(self, x):
+        return self.encoder(x)
+
+
+class Decoder64(nn.Module):
+    def __init__(self, c_out=1, c_hid=16, c_in=1, dim=16):
+        super(Decoder64, self).__init__()
+        self.decoder = nn.Sequential(
+            nn.Flatten(1, -1),
+            nn.Linear(in_features=c_in * dim * dim, out_features=32 * c_hid),
+            nn.GELU(),
+            nn.Unflatten(1, (32 * c_hid, 1, 1)),
+            nn.ConvTranspose2d(
+                in_channels=32 * c_hid,
+                out_channels=16 * c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=16 * c_hid,
+                out_channels=8 * c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=8 * c_hid,
+                out_channels=4 * c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=4 * c_hid,
+                out_channels=2 * c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=2 * c_hid,
+                out_channels=c_hid,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ),
+            nn.GELU(),
+            nn.ConvTranspose2d(
+                in_channels=c_hid,
+                out_channels=c_out,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
             ),
             nn.Sigmoid(),
         )
