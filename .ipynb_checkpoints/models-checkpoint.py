@@ -87,14 +87,13 @@ class Encoder(Net):
 
 
 class Decoder(Net):
-    def __init__(self, c_in=1, c_hid=16, c_out=3, dim=16, depth=5, is28=False):
+    def __init__(self, c_in=1, c_hid=16, c_out=1, dim=16, depth=5, is28=False):
         super().__init__()
         channels = [32 * c_hid, 16 * c_hid, 8 * c_hid, 4 * c_hid, 2 * c_hid, 1 * c_hid]
         if depth > len(channels):
             raise ValueError("Depth exceeds the maximum number of channels defined.")
 
         self.convolutional_features = nn.Sequential()
-        print(c_in * dim * dim, channels[-depth])
         self.upsample = nn.Sequential(
             nn.Flatten(1, -1),
             nn.Linear(in_features=c_in * dim * dim, out_features=channels[-depth]),
