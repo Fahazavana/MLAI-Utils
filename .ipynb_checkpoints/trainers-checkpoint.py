@@ -9,10 +9,14 @@ from torchcfm.conditional_flow_matching import (
 import torch
 from torch import nn, optim
 from torch.optim import lr_scheduler
-from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR, SequentialLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    LambdaLR,
+    SequentialLR,
+    _LRScheduler,
+)
 
 from tqdm import tqdm
-from utils import WarmupLR
 
 
 class AETrainer:
@@ -130,6 +134,45 @@ class AETrainer:
             )
             self.encoder.eval()
             self.decoder.eval()
+
+
+class WarmupLR(_LRScheduler):
+    def __init__(
+        self,
+        optimizer,
+        warmup_steps: int,
+        final_lr: float,
+        initial_lr: float = 0.0,
+        last_epoch: int = -1,
+    ):
+        self.warmup_steps = warmup_steps
+        self.final_lr = final_lr
+        self.initial_lr = initial_lr
+        super().__init__(optimizer, last_epoch)
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = self.initial_lr
+            param_group["initial_lr"] = self.final_lr
+
+    def get_lr(self):
+        if self.last_epoch < self.warmup_steps:
+            return [
+                self.initial_lr
+                + (self.final_lr - self.initial_lr)
+                * self.last_epoch
+                / self.warmup_steps
+                for _ in self.optimizer.param_groups
+            ]
+        else:
+            return [self.final_lr for _ in self.optimizer.param_groups]
+
+    def step(self, epoch=None):
+        if epoch is None:
+            epoch = self.last_epoch + 1
+        self.last_epoch = epoch
+
+        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
+            param_group["lr"] = lr
+        self._last_lr = [group["lr"] for group in self.optimizer.param_groups]
 
 
 class CFMTrainer:
