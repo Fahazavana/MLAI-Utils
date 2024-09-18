@@ -63,7 +63,7 @@ class AETrainer:
             self.optimizer.step()
             train_loss += loss.item() * inputs.size(0)
             batch = f"{batch_idx+1}/{len(self.train_loader)}"
-            msg = f"\r{desc:^20} batch:{batch:^10} | train_loss:{train_loss / self.train_size:>7.2e} | val_loss: {0.0:>7.2e} | lr:{lr:>7.1e}"
+            msg = f"\r{desc:^20} batch:{batch:^10} | train_loss:{train_loss / self.train_size:>7.2e} | val_loss:{0.0:>7.2e} | lr:{lr:>7.1e}"
             print(msg, end="")
         train_loss /= self.train_size
         self.encoder.eval()
@@ -75,7 +75,7 @@ class AETrainer:
                 decoded = self.decoder(encoded)
                 loss = self.criterion(decoded, inputs)
                 valid_loss += loss.item() * inputs.size(0)
-                msg = f"\r{desc:^20} batch:{batch:^10} | train_loss:{train_loss / self.train_size:>7.2e} | val_loss:{valid_loss / self.valid_size:>7.2e} | lr:{lr:>7.1e}"
+                msg = f"\r{desc:^20} batch:{batch:^10} | train_loss:{train_loss:>7.2e} | val_loss:{valid_loss / self.valid_size:>7.2e} | lr:{lr:>7.1e}"
                 print(msg, end="")
 
         print()
@@ -170,6 +170,75 @@ class AETrainer:
         fig.tight_layout()
         plt.savefig(f"{self.name}/ae_training.pdf")
         plt.show()
+
+class AESTrainer(AETrainer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    
+    def train(self, epochs: int, update_freq:int, patience=10, delta=0.0, load_best=True):
+        os.makedirs(self.name, exist_ok=True)
+        no_improvement_counter = 0
+        best_valid_loss = float("inf")
+
+        self.encoder = self.encoder.to(self.device)
+        self.decoder = self.decoder.to(self.device)
+
+        scheduler = lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode="min", patience=patience // 2, min_lr=1e-8
+        )
+        start_time = time.time()
+        epochstr = str(epochs)
+        nbdigit = len(epochstr)
+
+        for epoch in range(epochs):
+            self.train_lr.append(scheduler.get_last_lr())
+            train_loss, valid_loss = self._run_epoch(
+                desc=f"Epoch [{str(epoch +1).zfill(nbdigit)}/{epochstr}]"
+            )
+            self.train_loss.append(train_loss)
+            self.valid_loss.append(valid_loss)
+            scheduler.step(valid_loss)
+            if (epochs+1)%update_freq ==0:
+                self.criterion.feature_extractor.features.load_state_dict(self.encoder.convolutional_features.state_dict())
+                for p in self.criterion.parameters():
+                    p.requires_grad = False
+                    
+            if valid_loss < (best_valid_loss - delta):
+                no_improvement_counter = 0
+                best_valid_loss = valid_loss
+                torch.save(self.encoder, f"{self.name}/{self.name}_encoder.pth")
+                torch.save(self.decoder, f"{self.name}/{self.name}_decoder.pth")
+            else:
+                no_improvement_counter += 1
+                if no_improvement_counter >= patience:
+                    print(f"Early stopping at epoch {epoch}")
+                    break
+
+        end_time = time.time()
+        duration = end_time - start_time
+        training_data = {
+            "start": start_time,
+            "end": end_time,
+            "duration": duration,
+            "validation_loss": self.valid_loss,
+            "train_loss": self.train_loss,
+            "train_lr": self.train_lr,
+        }
+        with open(f"{self.name}/ae_training_log.json", "w") as f:
+            json.dump(training_data, f)
+        if load_best:
+            self.encoder.load_state_dict(
+                torch.load(
+                    f"{self.name}/{self.name}_encoder.pth", weights_only=False
+                ).state_dict()
+            )
+            self.decoder.load_state_dict(
+                torch.load(
+                    f"{self.name}/{self.name}_decoder.pth", weights_only=False
+                ).state_dict()
+            )
+            self.encoder.eval()
+            self.decoder.eval()
 
 
 class WarmupLR(_LRScheduler):

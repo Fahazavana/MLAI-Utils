@@ -43,3 +43,35 @@ class VGG11Loss(nn.Module):
             layer_loss = torch.abs(f1 - f2).mean()
             loss += layer_loss
         return loss
+
+
+class FeatureExtractor(nn.Module):
+    def __init__(self, encoder):
+        super(FeatureExtractor, self).__init__()
+        self.features = encoder.convolutional_features
+        for p in self.parameters():
+            p.requires_grad = False
+        self.eval()
+        
+    @torch.no_grad()
+    def forward(self, x, level=-1):
+        outputs = []
+        for i, layer in enumerate(self.features[:level]):
+            x = layer(x)
+            outputs.append(x)
+        return outputs
+
+class SelfLoss(nn.Module):
+    def __init__(self, encoder, level, device):
+        super(SelfLoss, self).__init__()
+        self.level = level
+        self.feature_extractor = FeatureExtractor(encoder).to(device)
+        
+    def forward(self, I1, I2):
+        features1 = self.feature_extractor(I1, self.level)
+        features2 = self.feature_extractor(I2, self.level)
+        loss = 0.5 * torch.abs(I1 - I2).mean()
+        for f1, f2 in zip(features1, features2):
+            layer_loss = torch.abs(f1 - f2).mean()
+            loss += layer_loss
+        return loss
