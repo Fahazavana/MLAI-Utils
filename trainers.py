@@ -7,6 +7,7 @@ from torchcfm.conditional_flow_matching import (
 )
 
 import torch
+import matplotlib.pyplot as plt
 from torch import nn, optim
 from torch.optim import lr_scheduler
 from torch.optim.lr_scheduler import (
@@ -15,6 +16,7 @@ from torch.optim.lr_scheduler import (
     SequentialLR,
     _LRScheduler,
 )
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 from tqdm import tqdm
 
 
@@ -151,6 +153,36 @@ class AETrainer:
             )
             self.encoder.eval()
             self.decoder.eval()
+
+    def plot_training_loss(self):
+        formatter = ScalarFormatter(useMathText=True)
+        formatter.set_scientific(True)
+        formatter.set_powerlimits((-1, 1))
+        fig, ax1 = plt.subplots()
+        color = "tab:red"
+        ax1.set_xlabel("Epochs")
+        ax1.plot(self.train_loss, color="tab:blue", label="Training loss")
+        ax1.plot(self.valid_loss, color="tab:orange", label="Validation loss")
+        ax1.tick_params(axis="y", labelcolor=color)
+        ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax1.yaxis.set_major_formatter(formatter)
+        plt.legend()
+        ax2 = ax1.twinx()
+        color = "tab:gray"
+        ax2.set_ylabel("Learning Rate", color=color)
+        ax2.plot(self.train_lr, "--", color=color, label="Learning Rate")
+        ax2.tick_params(axis="y", labelcolor=color)
+        ax2.yaxis.set_major_formatter(formatter)
+
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        lines = lines1 + lines2
+        labels = labels1 + labels2
+
+        ax1.legend(lines, labels)
+        fig.tight_layout()
+        plt.savefig(f"{self.name}/ae_training.pdf")
+        plt.show()
 
 
 class WarmupLR(_LRScheduler):
@@ -305,3 +337,20 @@ class CFMTrainer:
                 ).state_dict()
             )
         self.cfm.eval()
+
+    def plot_training_loss(self):
+        fig, ax_loss = plt.subplots()
+        color1 = "tab:red"
+        ax_loss.plot(self.train_loss, color=color1)
+        ax_loss.set_ylabel("Loss", color=color1)
+        ax_loss.tick_params(axis="y", labelcolor=color1)
+        ax_loss.set_xlabel("Epochs")
+
+        ax_lr = ax_loss.twinx()
+        color2 = "tab:gray"
+        ax_lr.plot(self.train_lr, "--", color=color2)
+        ax_lr.set_ylabel("LR", color=color2)
+        ax_lr.tick_params(axis="y", labelcolor=color2)
+        fig.tight_layout()
+        plt.savefig(f"{self.name}/cfm_training.pdf")
+        plt.show()
