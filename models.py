@@ -104,7 +104,7 @@ class Decoder(Net):
         for i in range(-depth, 0):
             in_channels = channels[i]
             out_channels = c_out if (i == -1) else channels[i + 1]
-            output_padding = 0 if (is28 and i == -4) else 1
+            output_padding = 0 if (is28 and i == -3) else 1
             self.convolutional_features.add_module(
                 f"{depth+i}",
                 upsampleblock(i, in_channels, out_channels, output_padding),
@@ -139,7 +139,7 @@ class CFMModel(Net):
         elif self.nntype == "unet":
             node_model = model
         else:
-            raise ValueError(f"Unknown model type: {model_type}")
+            raise ValueError(f"Unknown model type: {nntype}")
         return NeuralODE(node_model, **node_kwargs)
 
     def forward(self, inputs):
@@ -155,7 +155,7 @@ class CFMModel(Net):
             noise,
             t_span=torch.linspace(0, 1, 2, device=device),
         )
-        return trajectory[1]
+        return trajectory
 
     def _generate_noise(self, nbr_sample, device):
         if self.nntype == "unet":

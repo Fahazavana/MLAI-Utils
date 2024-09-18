@@ -14,7 +14,6 @@
 # ---
 
 # %%
-import math
 import os
 import platform
 from glob import glob
@@ -34,8 +33,6 @@ def get_device():
         return "mps" if torch.backends.mps.is_available() else "cpu"
     else:  # Linux, Windows
         return "cuda" if torch.cuda.is_available() else "cpu"
-
-
 # %%
 class FIDDataset(Dataset):
     def __init__(self, path, real_data, fake_batch):

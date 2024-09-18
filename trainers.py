@@ -15,7 +15,6 @@ from torch.optim.lr_scheduler import (
     SequentialLR,
     _LRScheduler,
 )
-
 from tqdm import tqdm
 
 
@@ -51,14 +50,24 @@ class AETrainer:
             self.decoder.train()
             data_size = self.train_size
             loader = self.train_loader
+            pbar = tqdm(
+                loader,
+                desc="Train",
+                unit="batch",
+                ncols=80,
+                leave=True,
+                ascii=" >=",
+                position=0,
+            )
         else:
             self.encoder.eval()
             self.decoder.eval()
             data_size = self.valid_size
             loader = self.valid_loader
+            pbar = loader
 
         total_loss = 0.0
-        for inputs, _ in loader:
+        for inputs, _ in pbar:
             inputs = inputs.to(self.device)
             if is_train:
                 self.optimizer.zero_grad()
@@ -70,6 +79,12 @@ class AETrainer:
 
                 if is_train:
                     loss.backward()
+                    nn.utils.clip_grad_value_(
+                        self.encoder.parameters(), 1, foreach=True
+                    )
+                    nn.utils.clip_grad_value_(
+                        self.decoder.parameters(), 1, foreach=True
+                    )
                     self.optimizer.step()
 
             total_loss += loss.item() * inputs.size(0)
@@ -85,9 +100,11 @@ class AETrainer:
         self.decoder = self.decoder.to(self.device)
 
         scheduler = lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", patience=10, min_lr=1e-8
+            self.optimizer, mode="min", patience=5, min_lr=1e-8
         )
         start_time = time.time()
+        epochstr = str(epochs)
+        nbdigit = len(epochstr)
         for epoch in range(epochs):
             self.train_lr.append(scheduler.get_last_lr())
             train_loss = self._run_epoch(is_train=True)
@@ -95,20 +112,15 @@ class AETrainer:
 
             self.train_loss.append(train_loss)
             self.valid_loss.append(valid_loss)
-            msg = f"Train Loss: {train_loss:.3e} | Val Loss: {valid_loss:.3e} | lr:{self.train_lr[-1][0]:.3e}"
-            scheduler.step(valid_loss)
+            msg = f"Epoch {str(epoch +1).zfill(nbdigit)}/{epochstr}: Train Loss: {train_loss:.3g} | Valid Loss: {valid_loss:.3g} | lr:{self.train_lr[-1][0]:.3e}"
             scheduler.step(valid_loss)
             print(msg)
 
             if valid_loss < (best_valid_loss - delta):
                 no_improvement_counter = 0
                 best_valid_loss = valid_loss
-                torch.save(
-                    self.encoder.state_dict(), f"{self.name}/{self.name}_encoder.pth"
-                )
-                torch.save(
-                    self.decoder.state_dict(), f"{self.name}/{self.name}_decoder.pth"
-                )
+                torch.save(self.encoder, f"{self.name}/{self.name}_encoder.pth")
+                torch.save(self.decoder, f"{self.name}/{self.name}_decoder.pth")
             else:
                 no_improvement_counter += 1
                 if no_improvement_counter >= patience:
@@ -122,15 +134,20 @@ class AETrainer:
             "duration": duration,
             "validation_loss": self.valid_loss,
             "train_loss": self.train_loss,
+            "train_lr": self.train_lr,
         }
         with open(f"{self.name}/ae_training_log.json", "w") as f:
             json.dump(training_data, f)
         if load_best:
             self.encoder.load_state_dict(
-                torch.load(f"{self.name}/{self.name}_encoder.pth")
+                torch.load(
+                    f"{self.name}/{self.name}_encoder.pth", weights_only=False
+                ).state_dict()
             )
             self.decoder.load_state_dict(
-                torch.load(f"{self.name}/{self.name}_decoder.pth")
+                torch.load(
+                    f"{self.name}/{self.name}_decoder.pth", weights_only=False
+                ).state_dict()
             )
             self.encoder.eval()
             self.decoder.eval()
@@ -183,7 +200,7 @@ class CFMTrainer:
         self.encoder = encoder
         self.optimizer = optimizer
         self.train_loader = train_loader
-        self.train_size = len(self.train_loader)
+        self.train_size = len(self.train_loader.dataset)
         self.criterion = nn.MSELoss()
         self.fm = ExactOptimalTransportConditionalFlowMatcher(sigma=0.01)
         self.sampler = self.fm.sample_location_and_conditional_flow
@@ -202,6 +219,7 @@ class CFMTrainer:
     ):
         os.makedirs(self.name, exist_ok=True)
         self.cfm.train()
+        self.cfm = self.cfm.to(self.device)
         self.encoder.eval()
         for param in self.encoder.parameters():
             param.requires_grad = False
@@ -219,10 +237,21 @@ class CFMTrainer:
         )
 
         start_time = time.time()
+        epochstr = str(epochs)
+        nbdigit = len(epochstr)
         for epoch in range(epochs):
             self.train_lr.append(scheduler.get_last_lr())
             total_loss = 0.0
-            for inputs, _ in self.train_loader:
+            pbar = tqdm(
+                self.train_loader,
+                desc="Train",
+                unit="batch",
+                ncols=80,
+                leave=True,
+                ascii=" >=",
+                position=0,
+            )
+            for inputs, _ in pbar:
                 inputs = inputs.to(self.device)
                 with torch.no_grad():
                     x1 = self.encoder(inputs)
@@ -230,7 +259,6 @@ class CFMTrainer:
                 self.optimizer.zero_grad()
                 x0 = torch.randn_like(x1)
                 t, xt, ut = self.sampler(x0, x1)
-
                 if self.cfm.nntype == "mlp":
                     vt = self.cfm((torch.cat([t.unsqueeze(-1), xt], dim=-1),))
                 elif self.cfm.nntype == "unet":
@@ -240,6 +268,7 @@ class CFMTrainer:
 
                 loss = self.criterion(ut, vt)
                 loss.backward()
+                nn.utils.clip_grad_value_(self.cfm.parameters(), 1, foreach=True)
                 self.optimizer.step()
                 total_loss += loss.item() * inputs.size(0)
             total_loss /= self.train_size
@@ -247,13 +276,13 @@ class CFMTrainer:
             self.train_loss.append(total_loss)
 
             scheduler.step()
-            msg = f"Epoch [{epoch + 1}/{epochs}]: Train Loss: {total_loss:.3e} | lr:{self.train_lr[-1][0]:.3e}"
+            msg = f"Epoch {str(epoch +1).zfill(nbdigit)}/{epochstr}: Train Loss: {total_loss:.3g} | lr:{self.train_lr[-1][0]:.3e}"
             print(msg)
 
             if total_loss < (best_loss - delta):
                 best_loss = total_loss
                 epochs_no_improve = 0
-                torch.save(self.cfm.state_dict(), f"{self.name}/{self.name}_cfm.pth")
+                torch.save(self.cfm, f"{self.name}/{self.name}_cfm.pth")
             else:
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:
@@ -270,5 +299,9 @@ class CFMTrainer:
         with open(f"{self.name}/cfm_training_log.json", "w") as f:
             json.dump(training_data, f)
         if load_best:
-            self.cfm.load_state_dict(torch.load(f"{self.name}/{self.name}_cfm.pth"))
+            self.cfm.load_state_dict(
+                torch.load(
+                    f"{self.name}/{self.name}_cfm.pth", weights_only=False
+                ).state_dict()
+            )
         self.cfm.eval()
