@@ -17,7 +17,6 @@ from torch.optim.lr_scheduler import (
     _LRScheduler,
 )
 from matplotlib.ticker import MaxNLocator, ScalarFormatter
-from tqdm import tqdm
 
 
 class AETrainer:
@@ -46,52 +45,41 @@ class AETrainer:
         self.valid_loss = []
         self.train_lr = []
 
-    def _run_epoch(self, is_train):
-        if is_train:
-            self.encoder.train()
-            self.decoder.train()
-            data_size = self.train_size
-            loader = self.train_loader
-            pbar = tqdm(
-                loader,
-                desc="Train",
-                unit="batch",
-                ncols=80,
-                leave=True,
-                ascii=" >=",
-                position=0,
-            )
-        else:
-            self.encoder.eval()
-            self.decoder.eval()
-            data_size = self.valid_size
-            loader = self.valid_loader
-            pbar = loader
-
-        total_loss = 0.0
-        for inputs, _ in pbar:
+    def _run_epoch(self, desc):
+        lr = self.optimizer.param_groups[-1]["lr"]
+        train_loss = 0.0
+        valid_loss = 0.0
+        self.encoder.train()
+        self.decoder.train()
+        for batch_idx, (inputs, _) in enumerate(self.train_loader):
             inputs = inputs.to(self.device)
-            if is_train:
-                self.optimizer.zero_grad()
-
-            with torch.set_grad_enabled(is_train):
+            self.optimizer.zero_grad()
+            encoded = self.encoder(inputs)
+            decoded = self.decoder(encoded)
+            loss = self.criterion(decoded, inputs)
+            loss.backward()
+            nn.utils.clip_grad_value_(self.encoder.parameters(), 1, foreach=True)
+            nn.utils.clip_grad_value_(self.decoder.parameters(), 1, foreach=True)
+            self.optimizer.step()
+            train_loss += loss.item() * inputs.size(0)
+            batch = f"{batch_idx+1}/{len(self.train_loader)}"
+            msg = f"\r{desc:^20}: batch: {batch:^10} | train_loss:{train_loss / self.train_size:>5.2e} | val_loss: {0.0:>5.2e} | lr:{lr:>5.1e}"
+            print(msg, end="")
+        train_loss /= self.train_size
+        self.encoder.eval()
+        self.decoder.eval()
+        with torch.no_grad():
+            for inputs, _ in self.valid_loader:
+                inputs = inputs.to(self.device)
                 encoded = self.encoder(inputs)
                 decoded = self.decoder(encoded)
                 loss = self.criterion(decoded, inputs)
+                valid_loss += loss.item() * inputs.size(0)
+                msg = f"\r{desc:^20}: batch:{batch:^10} | train_loss:{train_loss / self.train_size:>5.2e} | val_loss:{valid_loss / self.valid_size:>5.2e} | lr:{lr:>5.1e}"
+                print(msg, end="")
 
-                if is_train:
-                    loss.backward()
-                    nn.utils.clip_grad_value_(
-                        self.encoder.parameters(), 1, foreach=True
-                    )
-                    nn.utils.clip_grad_value_(
-                        self.decoder.parameters(), 1, foreach=True
-                    )
-                    self.optimizer.step()
-
-            total_loss += loss.item() * inputs.size(0)
-
-        return total_loss / data_size
+        print()
+        return train_loss, valid_loss / self.valid_size
 
     def train(self, epochs: int, patience=10, delta=0.0, load_best=True):
         os.makedirs(self.name, exist_ok=True)
@@ -102,22 +90,20 @@ class AETrainer:
         self.decoder = self.decoder.to(self.device)
 
         scheduler = lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", patience=patience//2, min_lr=1e-8
+            self.optimizer, mode="min", patience=patience // 2, min_lr=1e-8
         )
         start_time = time.time()
         epochstr = str(epochs)
         nbdigit = len(epochstr)
+
         for epoch in range(epochs):
             self.train_lr.append(scheduler.get_last_lr())
-            train_loss = self._run_epoch(is_train=True)
-            valid_loss = self._run_epoch(is_train=False)
-
+            train_loss, valid_loss = self._run_epoch(
+                desc=f"Epoch [{str(epoch +1).zfill(nbdigit)}/{epochstr}]"
+            )
             self.train_loss.append(train_loss)
             self.valid_loss.append(valid_loss)
-            msg = f"Epoch {str(epoch +1).zfill(nbdigit)}/{epochstr}: Train Loss: {train_loss:.3g} | Valid Loss: {valid_loss:.3g} | lr:{self.train_lr[-1][0]:.3e}"
             scheduler.step(valid_loss)
-            print(msg)
-
             if valid_loss < (best_valid_loss - delta):
                 no_improvement_counter = 0
                 best_valid_loss = valid_loss
@@ -128,6 +114,7 @@ class AETrainer:
                 if no_improvement_counter >= patience:
                     print(f"Early stopping at epoch {epoch}")
                     break
+
         end_time = time.time()
         duration = end_time - start_time
         training_data = {
@@ -273,17 +260,9 @@ class CFMTrainer:
         nbdigit = len(epochstr)
         for epoch in range(epochs):
             self.train_lr.append(scheduler.get_last_lr())
+            desc = f"Epoch [{str(epoch +1).zfill(nbdigit)}/{epochstr}]"
             total_loss = 0.0
-            pbar = tqdm(
-                self.train_loader,
-                desc="Train",
-                unit="batch",
-                ncols=80,
-                leave=True,
-                ascii=" >=",
-                position=0,
-            )
-            for inputs, _ in pbar:
+            for batch_idx, (inputs, _) in enumerate(self.train_loader):
                 inputs = inputs.to(self.device)
                 with torch.no_grad():
                     x1 = self.encoder(inputs)
@@ -303,14 +282,15 @@ class CFMTrainer:
                 nn.utils.clip_grad_value_(self.cfm.parameters(), 1, foreach=True)
                 self.optimizer.step()
                 total_loss += loss.item() * inputs.size(0)
+                batch = f"{batch_idx+1}/{len(self.train_loader)}"
+                msg = f"\r{desc:^20}: batch:{batch:^10} | train_loss: {total_loss / self.train_size:>5.2e} | lr: {self.train_lr[-1][0]:>5.1e}"
+                print(msg, end="")
             total_loss /= self.train_size
 
             self.train_loss.append(total_loss)
 
             scheduler.step()
-            msg = f"Epoch {str(epoch +1).zfill(nbdigit)}/{epochstr}: Train Loss: {total_loss:.3g} | lr:{self.train_lr[-1][0]:.3e}"
-            print(msg)
-
+            print()
             if total_loss < (best_loss - delta):
                 best_loss = total_loss
                 epochs_no_improve = 0
@@ -320,6 +300,7 @@ class CFMTrainer:
                 if epochs_no_improve >= patience:
                     print(f"Early stopping at epoch {epoch + 1}")
                     break
+
         end_time = time.time()
         duration = end_time - start_time
         training_data = {
