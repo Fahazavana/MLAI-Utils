@@ -102,7 +102,7 @@ class AETrainer:
         self.decoder = self.decoder.to(self.device)
 
         scheduler = lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", patience=5, min_lr=1e-8
+            self.optimizer, mode="min", patience=patience//2, min_lr=1e-8
         )
         start_time = time.time()
         epochstr = str(epochs)
@@ -339,18 +339,25 @@ class CFMTrainer:
         self.cfm.eval()
 
     def plot_training_loss(self):
-        fig, ax_loss = plt.subplots()
+        fig, ax1 = plt.subplots()
         color1 = "tab:red"
-        ax_loss.plot(self.train_loss, color=color1)
-        ax_loss.set_ylabel("Loss", color=color1)
-        ax_loss.tick_params(axis="y", labelcolor=color1)
-        ax_loss.set_xlabel("Epochs")
+        ax1.plot(self.train_loss, color=color1, label="Loss")
+        ax1.set_ylabel("Loss", color=color1)
+        ax1.tick_params(axis="y", labelcolor=color1)
+        ax1.set_xlabel("Epochs")
 
-        ax_lr = ax_loss.twinx()
+        ax2 = ax1.twinx()
         color2 = "tab:gray"
-        ax_lr.plot(self.train_lr, "--", color=color2)
-        ax_lr.set_ylabel("LR", color=color2)
-        ax_lr.tick_params(axis="y", labelcolor=color2)
+        ax2.plot(self.train_lr, "--", color=color2, label="LR")
+        ax2.set_ylabel("LR", color=color2)
+        ax2.tick_params(axis="y", labelcolor=color2)
+
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        lines = lines1 + lines2
+        labels = labels1 + labels2
+
+        ax1.legend(lines, labels)
         fig.tight_layout()
         plt.savefig(f"{self.name}/cfm_training.pdf")
         plt.show()
