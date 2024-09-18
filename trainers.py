@@ -63,7 +63,7 @@ class AETrainer:
             self.optimizer.step()
             train_loss += loss.item() * inputs.size(0)
             batch = f"{batch_idx+1}/{len(self.train_loader)}"
-            msg = f"\r{desc:^20}: batch: {batch:^10} | train_loss:{train_loss / self.train_size:>5.2e} | val_loss: {0.0:>5.2e} | lr:{lr:>5.1e}"
+            msg = f"\r{desc:^20} batch:{batch:^10} | train_loss:{train_loss / self.train_size:>7.2e} | val_loss: {0.0:>7.2e} | lr:{lr:>7.1e}"
             print(msg, end="")
         train_loss /= self.train_size
         self.encoder.eval()
@@ -75,7 +75,7 @@ class AETrainer:
                 decoded = self.decoder(encoded)
                 loss = self.criterion(decoded, inputs)
                 valid_loss += loss.item() * inputs.size(0)
-                msg = f"\r{desc:^20}: batch:{batch:^10} | train_loss:{train_loss / self.train_size:>5.2e} | val_loss:{valid_loss / self.valid_size:>5.2e} | lr:{lr:>5.1e}"
+                msg = f"\r{desc:^20} batch:{batch:^10} | train_loss:{train_loss / self.train_size:>7.2e} | val_loss:{valid_loss / self.valid_size:>7.2e} | lr:{lr:>7.1e}"
                 print(msg, end="")
 
         print()
@@ -283,7 +283,7 @@ class CFMTrainer:
                 self.optimizer.step()
                 total_loss += loss.item() * inputs.size(0)
                 batch = f"{batch_idx+1}/{len(self.train_loader)}"
-                msg = f"\r{desc:^20}: batch:{batch:^10} | train_loss: {total_loss / self.train_size:>5.2e} | lr: {self.train_lr[-1][0]:>5.1e}"
+                msg = f"\r{desc:^20} batch:{batch:^10} | train_loss:{total_loss / self.train_size:>7.2e} | lr:{self.train_lr[-1][0]:>7.1e}"
                 print(msg, end="")
             total_loss /= self.train_size
 
