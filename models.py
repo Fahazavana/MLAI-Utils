@@ -139,7 +139,7 @@ class CFMModel(Net):
         elif self.nntype == "unet":
             node_model = model
         else:
-            raise ValueError(f"Unknown model type: {nntype}")
+            raise ValueError(f"Unknown model type: {self.nntype}")
         return NeuralODE(node_model, **node_kwargs)
 
     def forward(self, inputs):
