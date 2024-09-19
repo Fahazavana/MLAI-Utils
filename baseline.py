@@ -166,7 +166,7 @@ class CNNEncoder(Net):
 
 class CNNDecoder(Net):
     def __init__(
-        self, input_size, c_in=1, w_in=8, c_hid=8, c_out=1, unet=False, is28=False
+        self, input_size, c_in=1, w_in=8, c_hid=8, c_out=1, unet=False,
     ):
         super().__init__()
         _w_hid = ceil(input_size / 16)
@@ -189,7 +189,7 @@ class CNNDecoder(Net):
                 kernel_size=3,
                 stride=2,
                 padding=1,
-                output_padding=0 if is28 else 1,
+                output_padding=0 if (input_size == 28) else 1,
             ),
             nn.GELU(),
             nn.ConvTranspose2d(
