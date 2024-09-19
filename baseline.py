@@ -157,7 +157,7 @@ class CNNEncoder(Net):
             nn.Linear(_w_hid * _w_hid * 8 * c_hid, c_out * w_out * w_out),
         )
         if unet:
-            self.net.add_module(10, nn.Unflatten(1, (c_out, w_out, w_out)))
+            self.net.add_module("10", nn.Unflatten(1, (c_out, w_out, w_out)))
         self.weights_init()
 
     def forward(self, x):
