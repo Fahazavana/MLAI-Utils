@@ -61,7 +61,7 @@ class MLPEncoder(Net):
                 net.add_module("8", nn.Unflatten(1, (2, 8, 8)))
 
         elif input_size == 64:
-            self.net = nn.Sequential(
+            net = nn.Sequential(
                 nn.Flatten(1, -1),
                 nn.Linear(3 * 64 * 64, 4096),
                 nn.GELU(),
@@ -72,7 +72,7 @@ class MLPEncoder(Net):
                 nn.Linear(512, 256),
             )
             if unet:
-                self.net.add_module("8", nn.Unflatten(1, (1, 16, 16)))
+                net.add_module("8", nn.Unflatten(1, (1, 16, 16)))
         else:
             raise ValueError(f"input_size = {input_size} not in [28, 32, 64]")
         return net
