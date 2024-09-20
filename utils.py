@@ -115,7 +115,7 @@ def generate_and_save(total_samples, batch_size, cfm, decoder, output_dir, devic
 
     if remaining_samples > 0:
         generated_images = generate(remaining_samples, cfm, decoder, device).cpu()
-        for _ in range(generated_images.shape[0]):
+        for i in range(generated_images.shape[0]):
             save_image(generated_images[i], output_dir, saved)
             saved += 1
             print(f"\rGenerated images saved at '{output_dir}': {saved}", end="")
