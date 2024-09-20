@@ -17,7 +17,7 @@
 import os
 import platform
 from glob import glob
-
+import numpy as np
 import torch
 from ignite.engine import Engine
 from ignite.metrics import FID, InceptionScore
@@ -33,86 +33,48 @@ def get_device():
         return "mps" if torch.backends.mps.is_available() else "cpu"
     else:  # Linux, Windows
         return "cuda" if torch.cuda.is_available() else "cpu"
-# %%
-class FIDDataset(Dataset):
-    def __init__(self, path, real_data, fake_batch):
-        self.fake_batch = fake_batch
-        self.fake_data = glob(f"{path}/*.pt")
-        self.real_data = iter(
-            DataLoader(real_data, batch_size=fake_batch, shuffle=True)
-        )
-        self.__test()
-
-    def __test(self):
-        fake_data = torch.load(
-            self.fake_data[0], map_location=torch.device("cpu"), weights_only=True
-        )
-        if fake_data.shape[0] != self.fake_batch:
-            raise ValueError(
-                f"batch size must be equale to the batch_size of the saved images"
-            )
-
-    def __len__(self):
-        return len(self.fake_data)
-
-    def __getitem__(self, idx):
-        real_data, _ = next(self.real_data)
-        fake_data = torch.load(
-            self.fake_data[idx], map_location=torch.device("cpu"), weights_only=True
-        )
-
-        # Resize first
-        real_data = T.functional.resize(real_data, size=(299, 299))
-        fake_data = T.functional.resize(fake_data, size=(299, 299))
-
-        # Then repeat channels if needed
-        if real_data.shape[1] != 3:
-            real_data = real_data.repeat(1, 3, 1, 1)
-        if fake_data.shape[1] != 3:
-            fake_data = fake_data.repeat(1, 3, 1, 1)
-        return real_data, fake_data
 
 
 # %%
-class FIDRecGen(Dataset):
-    def __init__(self, gen_path, rec_path):
-        self.gen_data = glob(f"{gen_path}/*.pt")
-        self.rec_data = glob(f"{rec_path}/*.pt")
-        self.__test()
-
-    def __test(self):
-        gen_data = torch.load(
-            self.gen_data[0], map_location=torch.device("cpu"), weights_only=True
-        )
-        rec_data = torch.load(
-            self.rec_data[0], map_location=torch.device("cpu"), weights_only=True
-        )
-        if gen_data.shape[0] != rec_data.shape[0]:
-            raise ValueError(
-                f"batch size must be equale to the batch_size of the saved images"
-            )
-
-    def __len__(self):
-        return len(self.gen_data)
+class FIDDataSet(Dataset):
+    def __init__(self, real, generated):
+        if len(real) != len(generated):
+            raise ValueError("The two dataset must have the same size")
+        self.real = real
+        self.generated = generated
 
     def __getitem__(self, idx):
-        gen_data = torch.load(
-            self.gen_data[idx], map_location=torch.device("cpu"), weights_only=True
-        )
-        rec_data = torch.load(
-            self.rec_data[idx], map_location=torch.device("cpu"), weights_only=True
-        )
+        real, _ = self.real[idx]
+        gen = self.generated[idx]
+        return real, gen
 
-        # Resize first
-        real_data = T.functional.resize(gen_data, size=(299, 299))
-        fake_data = T.functional.resize(rec_data, size=(299, 299))
+    def __len__(self):
+        return len(self.real)
 
-        # Then repeat channels if needed
-        if gen_data.shape[1] != 3:
-            gen_data = gen_data.repeat(1, 3, 1, 1)
-        if rec_data.shape[1] != 3:
-            rec_data = rec_data.repeat(1, 3, 1, 1)
-        return rec_data, gen_data
+
+# %%
+class GeneratedData(torch.utils.data.Dataset):
+
+    def __init__(self, root_dir, resize=False):
+        self.root_dir = root_dir
+        self.files = [
+            os.path.join(root_dir, f)
+            for f in os.listdir(root_dir)
+            if f.endswith(".npy")
+        ]
+        self.resize = resize
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        images = np.load(self.files[idx])
+        images = torch.from_numpy(images)
+        if self.resize:
+            images = T.functional.resize(images, size=(299, 299))
+        if images.shape[0] == 1:
+            images = images.repeat(3, 1, 1)
+        return images
 
 
 # %%
@@ -130,57 +92,48 @@ class WrapperInceptionV3(nn.Module):
 
 
 # %%
-def cfm_gen_and_save(
-    cfm_model, decoder, path, device, batch_size=128, total=2048, final_size=(299, 299)
-):
-    cfm_model = cfm_model.to(device)
-    decoder = decoder.to(device)
-    decoder.eval()
-    os.makedirs(path, exist_ok=True)
-    for batch in range(total // batch_size):
-        sample = cfm_model.sample(batch_size, device)
-        with torch.no_grad():
-            fake = decoder(sample)
-        torch.save(fake, os.path.join(path, f"batch_{batch}.pt"))
-        print(f"Batch {batch+1}: saved")
-
-
+@torch.no_grad()
+def generate(nbr_sample, cfm, decoder, device):
+    t, s = cfm.sample(nbr_sample, device)
+    return decoder(s)
 # %%
-def ae_gen_and_save(
-    encoder, decoder, path, data_set, device, batch_size=128, total=2048, final_size=(299, 299)
-):
-    encoder = encoder.to(device)
-    decoder = decoder.to(device)
-    encoder.eval()
-    decoder.eval()
-    data_loader = DataLoader(data_set, batch_size=batch_size, shuffle=True)
-    os.makedirs(path, exist_ok=True)
-    counter = 0
-    for batch, (images, _) in enumerate(data_loader):
-        images = images.to(device)
-        code = encoder(images)
-        recon = decoder(code)
-        counter += images.shape[0]
-        torch.save(recon, os.path.join(path, f"batch_{batch}.pt"))
-        print(f"Batch {batch+1}: saved")
-        if counter == total:
-            break
+def save_image(image, output_dir, index):
+    os.makedirs(output_dir, exist_ok=True)
+    np.save(os.path.join(output_dir, f"image_{index}.npy"), image.numpy())
+# %%
+def generate_and_save(total_samples, batch_size, cfm, decoder, output_dir, device):
+    num_full_batches = total_samples // batch_size
+    remaining_samples = total_samples % batch_size
+    saved = 0
 
+    for _ in range(num_full_batches):
+        generated_images = generate(batch_size, cfm, decoder, device).cpu()
+        for i in range(generated_images.shape[0]):
+            save_image(generated_images[i], output_dir, saved)
+            saved += 1
+            print(f"\rGenerated images saved at '{output_dir}': {saved}", end="")
+
+    if remaining_samples > 0:
+        generated_images = generate(remaining_samples, cfm, decoder, device).cpu()
+        for _ in range(generated_images.shape[0]):
+            save_image(generated_images[i], output_dir, saved)
+            saved += 1
+            print(f"\rGenerated images saved at '{output_dir}': {saved}", end="")
+    print()
 
 # %%
 def compute_fid(dims, data_loader, device):
-
     def evaluation_step(engine, batch):
         real, fake = batch
         return real.squeeze(0), fake.squeeze(0)
 
     block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
-    inception_model = InceptionV3([block_idx]).to(device)
+    inception_model = InceptionV3([block_idx])
 
     wrapper_model = WrapperInceptionV3(inception_model)
     wrapper_model.eval()
     pytorch_fid_metric = FID(
-        num_features=dims, feature_extractor=wrapper_model, device="cpu"
+        num_features=dims, feature_extractor=wrapper_model, device=device
     )
 
     evaluator = Engine(evaluation_step)
