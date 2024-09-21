@@ -1,19 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: py:percent,ipynb
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.16.4
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
-# %%
 import os
 import platform
 from glob import glob
@@ -27,7 +11,6 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms as T
 
 
-# %%
 def get_device():
     if platform.platform().lower().startswith("mac"):
         return "mps" if torch.backends.mps.is_available() else "cpu"
@@ -35,7 +18,6 @@ def get_device():
         return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-# %%
 class FIDDataSet(Dataset):
     def __init__(self, real, generated):
         if len(real) != len(generated):
@@ -44,15 +26,18 @@ class FIDDataSet(Dataset):
         self.generated = generated
 
     def __getitem__(self, idx):
-        real, _ = self.real[idx]
+        real = self.real[idx]
         gen = self.generated[idx]
+        if isinstance(real, tuple):
+            real = real[0]
+        if isinstance(gen, tuple):
+            gen = gen[0]
         return real, gen
 
     def __len__(self):
         return len(self.real)
 
 
-# %%
 class GeneratedData(torch.utils.data.Dataset):
 
     def __init__(self, root_dir, resize=False):
@@ -77,7 +62,6 @@ class GeneratedData(torch.utils.data.Dataset):
         return images
 
 
-# %%
 class WrapperInceptionV3(nn.Module):
     def __init__(self, fid_incv3):
         super().__init__()
@@ -91,16 +75,17 @@ class WrapperInceptionV3(nn.Module):
         return y
 
 
-# %%
 @torch.no_grad()
 def generate(nbr_sample, cfm, decoder, device):
     t, s = cfm.sample(nbr_sample, device)
     return decoder(s)
-# %%
+
+
 def save_image(image, output_dir, index):
     os.makedirs(output_dir, exist_ok=True)
     np.save(os.path.join(output_dir, f"image_{index}.npy"), image.numpy())
-# %%
+
+
 def generate_and_save(total_samples, batch_size, cfm, decoder, output_dir, device):
     num_full_batches = total_samples // batch_size
     remaining_samples = total_samples % batch_size
@@ -121,7 +106,21 @@ def generate_and_save(total_samples, batch_size, cfm, decoder, output_dir, devic
             print(f"\rGenerated images saved at '{output_dir}': {saved}", end="")
     print()
 
-# %%
+
+@torch.no_grad()
+def reconstruct_and_save(data_loader, encoder, decoder, output_dir, device):
+    encoder = encoder.to(device)
+    decoder = decoder.to(device)
+    saved = 0
+    for images, _ in data_loader:
+        reconstructed = decoder(encoder(images.to(device))).cpu()
+        for i in range(reconstructed.shape[0]):
+            save_image(reconstructed[i], output_dir, saved)
+            saved += 1
+            print(f"\rReconstructed images saved at '{output_dir}': {saved}", end="")
+    print()
+
+
 def compute_fid(dims, data_loader, device):
     def evaluation_step(engine, batch):
         real, fake = batch
