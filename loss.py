@@ -2,10 +2,6 @@ import torch
 from torch import nn
 from torchvision import models
 
-import torch
-from torch import nn
-from torchvision import models
-
 
 class FeatureExtractor(nn.Module):
     def __init__(self):
