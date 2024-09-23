@@ -2,6 +2,10 @@ import torch
 from torch import nn
 from torchvision import models
 
+import torch
+from torch import nn
+from torchvision import models
+
 
 class FeatureExtractor(nn.Module):
     def __init__(self):
@@ -13,8 +17,9 @@ class FeatureExtractor(nn.Module):
 
     def forward(self, x, level):
         activation_indices = self.activation_indices[:level]
+        max_id = activation_indices[-1] + 1
         outputs = []
-        for i, layer in enumerate(self.features):
+        for i, layer in enumerate(self.features[:max_id]):
             x = layer(x)
             if i in activation_indices:
                 outputs.append(x)
