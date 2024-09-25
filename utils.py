@@ -1,14 +1,19 @@
 import os
 import platform
 from glob import glob
+
 import numpy as np
 import torch
+import torch.nn.functional as F
+import torchvision.models as models
+from collections import namedtuple
 from ignite.engine import Engine
 from ignite.metrics import FID, InceptionScore
 from pytorch_fid.inception import InceptionV3
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
-from torchvision import datasets, transforms as T
+from torchvision import datasets
+from torchvision import transforms as T
 
 
 def get_device():
@@ -56,11 +61,15 @@ class GeneratedData(torch.utils.data.Dataset):
         images = np.load(self.files[idx])
         images = torch.from_numpy(images)
         if self.resize:
-            images = T.functional.resize(images, size=(299, 299))
+            images = T.functional.resize(images, size=self.resize)
         if images.shape[0] == 1:
             images = images.repeat(3, 1, 1)
         return images
 
+
+##############################
+# Frechet Inception Distance #
+# #############################
 
 class WrapperInceptionV3(nn.Module):
     def __init__(self, fid_incv3):
@@ -142,3 +151,161 @@ def compute_fid(dims, data_loader, device):
     metrics = evaluator.state.metrics
 
     return metrics
+
+
+##############################
+#  Improved Recall Precison  #
+# #############################
+
+Manifold = namedtuple("Manifold", ["features", "radii"])
+PrecisionAndRecall = namedtuple("PrecisinoAndRecall", ["precision", "recall"])
+
+
+""
+class PrecisionRecall:
+    def __init__(self, k=3, device="cpu", model=None):
+        self.manifold_ref = None
+        self.device = device
+        self.k = k
+        if model is None:
+            self.vgg16 = models.vgg16(weights=models.VGG16_Weights.DEFAULT)
+            self.vgg16.classifier = self.vgg16.classifier[:5]
+        else:
+            self.vgg16 = model
+        self.vgg16.eval()
+        for p in self.vgg16.parameters():
+            p.requires_grad = False
+        self.vgg16 = self.vgg16.to(self.device)
+
+    def precision_and_recall(self, subject):
+        assert self.manifold_ref is not None, "call compute_manifold_ref() first"
+        manifold_subject = self.compute_manifold(subject)
+        precision = compute_metric(
+            self.manifold_ref, manifold_subject.features, "Computing Precision"
+        )
+        recall = compute_metric(
+            manifold_subject, self.manifold_ref.features, "Computing Recall"
+        )
+        return PrecisionAndRecall(precision, recall)
+
+    def compute_manifold_ref(self, dataloader_ref):
+        self.manifold_ref = self.compute_manifold(dataloader_ref)
+
+    def realism(self, image):
+        """
+        args:
+            image: torch.Tensor of 1 x C x H x W
+        """
+        feat = self.extract_features(image)
+        return realism(self.manifold_ref, feat)
+
+    def compute_manifold(self, loader):
+        feats = self.extract_features(loader)
+        # radii
+        distances = compute_pairwise_distances(feats)
+        radii = distances2radii(distances, k=self.k)
+        return Manifold(feats, radii)
+
+    def extract_features(self, dataloader):
+        features = []
+        for i, batch in enumerate(dataloader):
+            batch = batch[0] if isinstance(batch, list) else batch
+            feature = self.vgg16(batch.to(self.device))
+            features.append(feature.cpu().data.numpy())
+            print(f"\r[{'Feature Extraction':^20}] {i+1}/{len(dataloader)} batches", end=" ")
+        print()
+        return np.concatenate(features, axis=0)
+
+""
+
+def compute_pairwise_distances(X, Y=None):
+    """
+    Compute pairwise distances between points in X and Y.
+
+    Args:
+        X: np.array of shape (N, dim)
+        Y: np.array of shape (M, dim), optional
+
+    Returns:
+        np.array of shape (N, M) if Y is provided, otherwise (N, N)
+    """
+    print("Computing pairwise distance")
+    X = X.astype(np.float64)  # Ensure float64 to prevent underflow
+    X_norm_square = np.sum(X**2, axis=1, keepdims=True)
+
+    if Y is None:
+        Y = X
+        num_Y = X.shape[0]
+        Y_norm_square = X_norm_square
+    else:
+        Y = Y.astype(np.float64)
+        Y_norm_square = np.sum(Y**2, axis=1, keepdims=True)
+        num_Y = Y.shape[0]
+
+    # Use broadcasting instead of repeating arrays
+    diff_square = X_norm_square + Y_norm_square.T - 2 * np.dot(X, Y.T)
+    min_diff_square = diff_square.min()
+    if min_diff_square < 0:
+        idx = diff_square < 0
+        diff_square[idx] = 0
+        print(
+            f"WARNING: fixing {idx.sum()} negative entry"
+            )
+        
+    return np.sqrt(diff_square)
+    
+""
+def distances2radii(distances, k=3):
+    num_features = distances.shape[0]
+    radii = np.zeros(num_features)
+    for i in range(num_features):
+        radii[i] = get_kth_value(distances[i], k=k)
+    return radii
+
+
+""
+def get_kth_value(np_array, k):
+    kprime = k + 1  # kth NN should be (k+1)th because closest one is itself
+    idx = np.argpartition(np_array, kprime)
+    k_smallests = np_array[idx[:kprime]]
+    kth_value = k_smallests.max()
+    return kth_value
+
+
+""
+def compute_metric(manifold_ref, feats_subject, desc=""):
+    num_subjects = feats_subject.shape[0]
+    count = 0
+    dist = compute_pairwise_distances(manifold_ref.features, feats_subject)
+    for i in range(num_subjects):
+        count += (dist[:, i] < manifold_ref.radii).any()
+        print(f"\r[{desc:^20}] {i+1}/{num_subjects} images", end="")
+    print()
+    return count / num_subjects
+
+
+""
+def is_in_ball(center, radius, subject):
+    return distance(center, subject) < radius
+
+""
+def distance(feat1, feat2):
+    return np.linalg.norm(feat1 - feat2)
+
+
+""
+def realism(manifold_real, feat_subject):
+    feats_real = manifold_real.features
+    radii_real = manifold_real.radii
+    diff = feats_real - feat_subject
+    dists = np.linalg.norm(diff, axis=1)
+    eps = 1e-6
+    ratios = radii_real / (dists + eps)
+    max_realism = float(ratios.max())
+    return max_realism
+
+""
+def compute_precision_recall(real_loader, gen_loader, device, k=3):
+    ipr = PrecisionRecall(device=device, k=k)
+    ipr.compute_manifold_ref(real_loader)
+    return ipr.precision_and_recall(gen_loader)
