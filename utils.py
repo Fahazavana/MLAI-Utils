@@ -230,7 +230,7 @@ def compute_pairwise_distances(X, Y=None):
         np.array of shape (N, M) if Y is provided, otherwise (N, N)
     """
     print("Computing pairwise distance")
-    X = X.astype(np.float64)  # Ensure float64 to prevent underflow
+    X = X.astype(np.float32)  # Ensure float64 to prevent underflow
     X_norm_square = np.sum(X**2, axis=1, keepdims=True)
 
     if Y is None:
@@ -238,7 +238,7 @@ def compute_pairwise_distances(X, Y=None):
         num_Y = X.shape[0]
         Y_norm_square = X_norm_square
     else:
-        Y = Y.astype(np.float64)
+        Y = Y.astype(np.float32)
         Y_norm_square = np.sum(Y**2, axis=1, keepdims=True)
         num_Y = Y.shape[0]
 
