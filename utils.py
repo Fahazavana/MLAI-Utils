@@ -161,7 +161,6 @@ Manifold = namedtuple("Manifold", ["features", "radii"])
 PrecisionAndRecall = namedtuple("PrecisinoAndRecall", ["precision", "recall"])
 
 
-""
 class PrecisionRecall:
     def __init__(self, k=3, device="cpu", model=None):
         self.manifold_ref = None
@@ -216,7 +215,7 @@ class PrecisionRecall:
         print()
         return np.concatenate(features, axis=0)
 
-""
+
 
 def compute_pairwise_distances(X, Y=None):
     """
@@ -229,7 +228,7 @@ def compute_pairwise_distances(X, Y=None):
     Returns:
         np.array of shape (N, M) if Y is provided, otherwise (N, N)
     """
-    print("Computing pairwise distance")
+    print(" * Computing pairwise distance")
     X = X.astype(np.float32)  # Ensure float64 to prevent underflow
     X_norm_square = np.sum(X**2, axis=1, keepdims=True)
 
@@ -249,12 +248,12 @@ def compute_pairwise_distances(X, Y=None):
         idx = diff_square < 0
         diff_square[idx] = 0
         print(
-            f"WARNING: fixing {idx.sum()} negative entry"
+            f" * WARNING: fixing {idx.sum()} negative entry"
             )
         
     return np.sqrt(diff_square)
     
-""
+
 def distances2radii(distances, k=3):
     num_features = distances.shape[0]
     radii = np.zeros(num_features)
@@ -263,7 +262,7 @@ def distances2radii(distances, k=3):
     return radii
 
 
-""
+
 def get_kth_value(np_array, k):
     kprime = k + 1  # kth NN should be (k+1)th because closest one is itself
     idx = np.argpartition(np_array, kprime)
@@ -272,7 +271,7 @@ def get_kth_value(np_array, k):
     return kth_value
 
 
-""
+
 def compute_metric(manifold_ref, feats_subject, desc=""):
     num_subjects = feats_subject.shape[0]
     count = 0
@@ -284,16 +283,16 @@ def compute_metric(manifold_ref, feats_subject, desc=""):
     return count / num_subjects
 
 
-""
+
 def is_in_ball(center, radius, subject):
     return distance(center, subject) < radius
 
-""
+
 def distance(feat1, feat2):
     return np.linalg.norm(feat1 - feat2)
 
 
-""
+
 def realism(manifold_real, feat_subject):
     feats_real = manifold_real.features
     radii_real = manifold_real.radii
@@ -304,7 +303,7 @@ def realism(manifold_real, feat_subject):
     max_realism = float(ratios.max())
     return max_realism
 
-""
+
 def compute_precision_recall(real_loader, gen_loader, device, k=3):
     ipr = PrecisionRecall(device=device, k=k)
     ipr.compute_manifold_ref(real_loader)
