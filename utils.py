@@ -179,9 +179,11 @@ class PrecisionRecall:
     def precision_and_recall(self, subject):
         assert self.manifold_ref is not None, "call compute_manifold_ref() first"
         manifold_subject = self.compute_manifold(subject)
+        print(" -> Computing Precision")
         precision = compute_metric(
             self.manifold_ref, manifold_subject.features, "Computing Precision"
         )
+        print(" -> Computing Recall")
         recall = compute_metric(
             manifold_subject, self.manifold_ref.features, "Computing Recall"
         )
@@ -228,8 +230,8 @@ def compute_pairwise_distances(X, Y=None):
     Returns:
         np.array of shape (N, M) if Y is provided, otherwise (N, N)
     """
-    print(" * Computing pairwise distance")
-    X = X.astype(np.float32)  # Ensure float64 to prevent underflow
+    print(f" -> Compute Pairwaise Distance")
+    X = X.astype(np.float32) 
     X_norm_square = np.sum(X**2, axis=1, keepdims=True)
 
     if Y is None:
@@ -241,7 +243,6 @@ def compute_pairwise_distances(X, Y=None):
         Y_norm_square = np.sum(Y**2, axis=1, keepdims=True)
         num_Y = Y.shape[0]
 
-    # Use broadcasting instead of repeating arrays
     diff_square = X_norm_square + Y_norm_square.T - 2 * np.dot(X, Y.T)
     min_diff_square = diff_square.min()
     if min_diff_square < 0:
