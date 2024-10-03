@@ -168,7 +168,7 @@ class PrecisionRecall:
         self.k = k
         if model is None:
             self.vgg16 = models.vgg16(weights=models.VGG16_Weights.DEFAULT)
-            self.vgg16.classifier = self.vgg16.classifier[:5]
+            self.vgg16.classifier = self.vgg16.classifier[:4]
         else:
             self.vgg16 = model
         self.vgg16.eval()
