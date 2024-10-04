@@ -154,7 +154,7 @@ def compute_fid(dims, data_loader, device):
 
 
 ##############################
-#  Improved Recall Precison  #
+#  Improved Recall Precision  #
 # #############################
 
 Manifold = namedtuple("Manifold", ["features", "radii"])
