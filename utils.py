@@ -158,7 +158,7 @@ def compute_fid(dims, data_loader, device):
 # #############################
 
 Manifold = namedtuple("Manifold", ["features", "radii"])
-PrecisionAndRecall = namedtuple("PrecisinoAndRecall", ["precision", "recall"])
+PrecisionAndRecall = namedtuple("PrecisionAndRecall", ["precision", "recall"])
 
 
 class PrecisionRecall:
